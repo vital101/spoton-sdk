@@ -592,13 +592,13 @@ class HTTPClientTest extends Test {
                 // Verify deserialized data matches expected
                 if (testCase.expectedData == null) {
                     Assert.isNull(response.data, testCase.name + " - null data");
-                } else if (Std.is(testCase.expectedData, String)) {
+                } else if (Std.isOfType(testCase.expectedData, String)) {
                     Assert.equals(testCase.expectedData, response.data, testCase.name + " - string data");
-                } else if (Std.is(testCase.expectedData, Int) || Std.is(testCase.expectedData, Float)) {
+                } else if (Std.isOfType(testCase.expectedData, Int) || Std.isOfType(testCase.expectedData, Float)) {
                     Assert.equals(testCase.expectedData, response.data, testCase.name + " - number data");
-                } else if (Std.is(testCase.expectedData, Bool)) {
+                } else if (Std.isOfType(testCase.expectedData, Bool)) {
                     Assert.equals(testCase.expectedData, response.data, testCase.name + " - boolean data");
-                } else if (Std.is(testCase.expectedData, Array)) {
+                } else if (Std.isOfType(testCase.expectedData, Array)) {
                     Assert.notNull(response.data, testCase.name + " - array not null");
                     Assert.equals(testCase.expectedData.length, response.data.length, testCase.name + " - array length");
                     for (j in 0...testCase.expectedData.length) {
