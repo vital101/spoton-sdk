@@ -1,0 +1,965 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+# Concurrency controls to prevent resource conflicts and optimize performance
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/develop' }}
+
+# Global environment variables for performance optimization
+env:
+  HAXELIB_ROOT: ~/.haxelib
+  FORCE_COLOR: 1
+  CI: true
+
+jobs:
+  # Performance monitoring job to track workflow metrics
+  performance-start:
+    name: Performance Monitoring Start
+    runs-on: ubuntu-latest
+    outputs:
+      start-time: ${{ steps.timing.outputs.start-time }}
+      workflow-id: ${{ steps.timing.outputs.workflow-id }}
+    steps:
+      - name: Record workflow start time
+        id: timing
+        run: |
+          echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+          echo "workflow-id=${{ github.run_id }}" >> $GITHUB_OUTPUT
+          echo "Workflow started at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  test:
+    name: Test (Haxe ${{ matrix.haxe-version }})
+    runs-on: ubuntu-latest
+    needs: performance-start
+    
+    # Optimized strategy for parallel execution
+    strategy:
+      matrix:
+        haxe-version: [4.2.5, 4.3.4]
+      fail-fast: false
+      max-parallel: 2  # Run both Haxe versions in parallel
+    
+    # Performance optimization environment
+    env:
+      HAXE_VERSION: ${{ matrix.haxe-version }}
+      WORKFLOW_START_TIME: ${{ needs.performance-start.outputs.start-time }}
+    
+    steps:
+      - name: Record job start time
+        id: job-timing
+        run: |
+          echo "job-start-time=$(date +%s)" >> $GITHUB_OUTPUT
+          echo "Job started at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Workflow start time: ${{ env.WORKFLOW_START_TIME }}"
+          
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Haxe ${{ matrix.haxe-version }}
+        uses: krdlab/setup-haxe@v1
+        with:
+          haxe-version: ${{ matrix.haxe-version }}
+      
+      - name: Print Haxe version
+        run: haxe --version
+      
+      - name: Print haxelib version
+        run: haxelib version
+      
+      - name: Cache haxelib dependencies (optimized)
+        id: cache-deps
+        uses: actions/cache@v3
+        with:
+          path: ~/.haxelib
+          key: haxelib-${{ matrix.haxe-version }}-${{ hashFiles('haxelib.json') }}-v2
+          restore-keys: |
+            haxelib-${{ matrix.haxe-version }}-${{ hashFiles('haxelib.json') }}-
+            haxelib-${{ matrix.haxe-version }}-
+            haxelib-
+      
+      - name: Record cache performance
+        run: |
+          if [ "${{ steps.cache-deps.outputs.cache-hit }}" == "true" ]; then
+            echo "✅ Cache hit - dependencies restored from cache"
+            echo "cache-status=hit" >> $GITHUB_ENV
+          else
+            echo "⚠️ Cache miss - dependencies will be downloaded"
+            echo "cache-status=miss" >> $GITHUB_ENV
+          fi
+      
+      - name: Setup haxelib environment
+        run: haxelib setup ~/.haxelib
+      
+      - name: Install project dependencies (optimized)
+        run: |
+          echo "Installing dependencies from haxelib.json..."
+          DEPS_START_TIME=$(date +%s)
+          
+          # Check if haxelib.json exists
+          if [ ! -f "haxelib.json" ]; then
+            echo "Error: haxelib.json not found in project root"
+            exit 1
+          fi
+          
+          # Skip installation if cache was hit and dependencies are already available
+          if [ "${{ env.cache-status }}" == "hit" ]; then
+            echo "✅ Dependencies already cached, verifying installation..."
+            if haxelib path haxe-concurrent >/dev/null 2>&1 && haxelib path utest >/dev/null 2>&1; then
+              echo "✅ All dependencies verified from cache"
+              DEPS_END_TIME=$(date +%s)
+              DEPS_DURATION=$((DEPS_END_TIME - DEPS_START_TIME))
+              echo "deps-duration=$DEPS_DURATION" >> $GITHUB_ENV
+              echo "deps-source=cache" >> $GITHUB_ENV
+              exit 0
+            else
+              echo "⚠️ Cache verification failed, proceeding with installation"
+            fi
+          fi
+          
+          # Install dependencies with error handling
+          if ! haxelib install --always; then
+            echo "Error: Failed to install dependencies"
+            echo "Attempting to diagnose the issue..."
+            
+            # Show haxelib version and configuration
+            echo "Haxelib version:"
+            haxelib version
+            
+            echo "Haxelib configuration:"
+            haxelib config
+            
+            echo "Contents of haxelib.json:"
+            cat haxelib.json
+            
+            # Try to install dependencies individually for better error reporting
+            echo "Attempting individual dependency installation..."
+            haxelib install haxe-concurrent --always || echo "Failed to install haxe-concurrent"
+            haxelib install utest --always || echo "Failed to install utest"
+            
+            exit 1
+          fi
+          
+          DEPS_END_TIME=$(date +%s)
+          DEPS_DURATION=$((DEPS_END_TIME - DEPS_START_TIME))
+          echo "deps-duration=$DEPS_DURATION" >> $GITHUB_ENV
+          echo "deps-source=download" >> $GITHUB_ENV
+          echo "Dependencies installed successfully in ${DEPS_DURATION}s"
+        shell: bash
+        continue-on-error: false
+      
+      - name: Verify dependency installation
+        run: |
+          echo "Verifying installed dependencies..."
+          haxelib list
+          echo "Checking project dependencies from haxelib.json..."
+          
+          # Create directory for dependency verification logs
+          mkdir -p test-results/logs
+          
+          # Check each dependency listed in haxelib.json with detailed error reporting
+          DEPENDENCY_ERRORS=0
+          
+          if haxelib path haxe-concurrent >/dev/null 2>&1; then
+            echo "✓ haxe-concurrent is installed and accessible"
+            haxelib path haxe-concurrent > test-results/logs/haxe-concurrent-path.log
+          else
+            echo "✗ haxe-concurrent is not properly installed"
+            echo "haxe-concurrent dependency verification failed" >> test-results/logs/dependency-errors.log
+            haxelib path haxe-concurrent 2>&1 >> test-results/logs/dependency-errors.log || true
+            DEPENDENCY_ERRORS=$((DEPENDENCY_ERRORS + 1))
+          fi
+          
+          if haxelib path utest >/dev/null 2>&1; then
+            echo "✓ utest is installed and accessible"
+            haxelib path utest > test-results/logs/utest-path.log
+          else
+            echo "✗ utest is not properly installed"
+            echo "utest dependency verification failed" >> test-results/logs/dependency-errors.log
+            haxelib path utest 2>&1 >> test-results/logs/dependency-errors.log || true
+            DEPENDENCY_ERRORS=$((DEPENDENCY_ERRORS + 1))
+          fi
+          
+          if [ $DEPENDENCY_ERRORS -gt 0 ]; then
+            echo "Dependency verification failed with $DEPENDENCY_ERRORS errors"
+            echo "Error details saved to test-results/logs/dependency-errors.log"
+            echo "Attempting dependency recovery..."
+            
+            # Try to reinstall failed dependencies
+            echo "Reinstalling dependencies..."
+            haxelib install --always 2>&1 | tee test-results/logs/dependency-recovery.log
+            
+            # Verify again after recovery attempt
+            if haxelib path haxe-concurrent >/dev/null 2>&1 && haxelib path utest >/dev/null 2>&1; then
+              echo "✓ Dependency recovery successful"
+            else
+              echo "✗ Dependency recovery failed"
+              exit 1
+            fi
+          fi
+          
+          echo "All dependencies verified successfully"
+        shell: bash
+      
+      - name: Create output directory
+        run: |
+          echo "Creating output directory for test compilation..."
+          mkdir -p out
+          echo "Output directory created successfully"
+        shell: bash
+      
+      - name: Run tests (with performance monitoring)
+        id: test_execution
+        run: |
+          echo "Starting test execution with Haxe ${{ matrix.haxe-version }}..."
+          echo "========================================"
+          
+          # Record test execution start time
+          TEST_START_TIME=$(date +%s)
+          echo "test-start-time=$TEST_START_TIME" >> $GITHUB_ENV
+          
+          # Create test results directory with subdirectories for better organization
+          mkdir -p test-results/{logs,reports,artifacts}
+          
+          # Set up error handling and debugging
+          set -o pipefail
+          
+          # Capture system information for debugging
+          echo "System Information:" > test-results/logs/system-info.log
+          echo "Date: $(date)" >> test-results/logs/system-info.log
+          echo "Haxe Version: $(haxe --version)" >> test-results/logs/system-info.log
+          echo "Haxelib Version: $(haxelib version)" >> test-results/logs/system-info.log
+          echo "Working Directory: $(pwd)" >> test-results/logs/system-info.log
+          echo "Environment Variables:" >> test-results/logs/system-info.log
+          env | grep -E "(HAXE|PATH)" >> test-results/logs/system-info.log
+          echo "Installed Libraries:" >> test-results/logs/system-info.log
+          haxelib list >> test-results/logs/system-info.log 2>&1
+          
+          # Execute tests with comprehensive error capture and performance monitoring
+          echo "Executing test suite..."
+          TEST_EXIT_CODE=0
+          COMPILATION_START_TIME=$(date +%s)
+          
+          # Run tests and capture both stdout and stderr separately
+          if haxe build-test.hxml > test-results/logs/test-stdout.log 2> test-results/logs/test-stderr.log; then
+            TEST_EXIT_CODE=0
+            TEST_END_TIME=$(date +%s)
+            TEST_DURATION=$((TEST_END_TIME - TEST_START_TIME))
+            COMPILATION_DURATION=$((TEST_END_TIME - COMPILATION_START_TIME))
+            
+            echo "========================================"
+            echo "✓ All tests passed successfully!"
+            echo "✓ Test execution completed in ${TEST_DURATION}s"
+            echo "✓ Compilation and test execution took ${COMPILATION_DURATION}s"
+            echo "test_status=success" >> $GITHUB_OUTPUT
+            echo "test_summary=All tests passed" >> $GITHUB_OUTPUT
+            echo "test_duration=$TEST_DURATION" >> $GITHUB_OUTPUT
+            echo "compilation_duration=$COMPILATION_DURATION" >> $GITHUB_OUTPUT
+            
+            # Combine output for complete log
+            cat test-results/logs/test-stdout.log test-results/logs/test-stderr.log > test-results/logs/test-output.log
+          else
+            TEST_EXIT_CODE=$?
+            TEST_END_TIME=$(date +%s)
+            TEST_DURATION=$((TEST_END_TIME - TEST_START_TIME))
+            COMPILATION_DURATION=$((TEST_END_TIME - COMPILATION_START_TIME))
+            
+            echo "========================================"
+            echo "✗ Tests failed with exit code: $TEST_EXIT_CODE"
+            echo "✗ Test execution failed after ${TEST_DURATION}s"
+            echo "✗ Compilation and test execution took ${COMPILATION_DURATION}s"
+            echo "test_status=failure" >> $GITHUB_OUTPUT
+            echo "test_summary=Tests failed with exit code $TEST_EXIT_CODE" >> $GITHUB_OUTPUT
+            echo "test_duration=$TEST_DURATION" >> $GITHUB_OUTPUT
+            echo "compilation_duration=$COMPILATION_DURATION" >> $GITHUB_OUTPUT
+            
+            # Combine output for complete log
+            cat test-results/logs/test-stdout.log test-results/logs/test-stderr.log > test-results/logs/test-output.log
+            
+            # Extract and format error details
+            echo "Extracting error details..."
+            
+            # Look for compilation errors
+            if grep -q "Error:" test-results/logs/test-stderr.log; then
+              echo "Compilation errors detected:" > test-results/reports/compilation-errors.log
+              grep -A 5 -B 2 "Error:" test-results/logs/test-stderr.log >> test-results/reports/compilation-errors.log
+            fi
+            
+            # Look for runtime errors and stack traces
+            if grep -q -E "(Exception|Error|Stack trace|at )" test-results/logs/test-output.log; then
+              echo "Runtime errors and stack traces detected:" > test-results/reports/runtime-errors.log
+              grep -A 10 -B 2 -E "(Exception|Error|Stack trace|at )" test-results/logs/test-output.log >> test-results/reports/runtime-errors.log
+            fi
+            
+            # Look for test failures with details
+            if grep -q -E "(FAIL|FAILED|AssertionError)" test-results/logs/test-output.log; then
+              echo "Test assertion failures detected:" > test-results/reports/test-failures.log
+              grep -A 5 -B 2 -E "(FAIL|FAILED|AssertionError)" test-results/logs/test-output.log >> test-results/reports/test-failures.log
+            fi
+            
+            # Capture the last 100 lines for context
+            echo "Last 100 lines of output:" > test-results/reports/failure-context.log
+            tail -100 test-results/logs/test-output.log >> test-results/reports/failure-context.log
+          fi
+          
+          # Parse test results from output with enhanced parsing
+          if [ -f "test-results/logs/test-output.log" ]; then
+            # Extract test statistics from utest output (multiple patterns for robustness)
+            TOTAL_TESTS=$(grep -o -E "(tests: [0-9]+|[0-9]+ tests)" test-results/logs/test-output.log | grep -o "[0-9]*" | head -1 || echo "0")
+            PASSED_TESTS=$(grep -o -E "(passed: [0-9]+|[0-9]+ passed)" test-results/logs/test-output.log | grep -o "[0-9]*" | head -1 || echo "0")
+            FAILED_TESTS=$(grep -o -E "(failed: [0-9]+|[0-9]+ failed)" test-results/logs/test-output.log | grep -o "[0-9]*" | head -1 || echo "0")
+            ERROR_TESTS=$(grep -o -E "(errors: [0-9]+|[0-9]+ errors)" test-results/logs/test-output.log | grep -o "[0-9]*" | head -1 || echo "0")
+            
+            # Alternative parsing for different test output formats
+            if [ "$TOTAL_TESTS" = "0" ]; then
+              # Try to parse from different formats
+              TOTAL_TESTS=$(grep -o -E "Running [0-9]+ tests" test-results/logs/test-output.log | grep -o "[0-9]*" | head -1 || echo "0")
+              
+              # Count individual test results if available
+              if [ "$TOTAL_TESTS" = "0" ]; then
+                PASSED_COUNT=$(grep -c -E "(✓|PASS|OK)" test-results/logs/test-output.log || echo "0")
+                FAILED_COUNT=$(grep -c -E "(✗|FAIL|ERROR)" test-results/logs/test-output.log || echo "0")
+                TOTAL_TESTS=$((PASSED_COUNT + FAILED_COUNT))
+                PASSED_TESTS=$PASSED_COUNT
+                FAILED_TESTS=$FAILED_COUNT
+                ERROR_TESTS="0"
+              fi
+            fi
+            
+            # If we still can't parse specific counts, use exit code as fallback
+            if [ "$TOTAL_TESTS" = "0" ]; then
+              if [ $TEST_EXIT_CODE -eq 0 ]; then
+                TOTAL_TESTS="1"
+                PASSED_TESTS="1"
+                FAILED_TESTS="0"
+                ERROR_TESTS="0"
+              else
+                TOTAL_TESTS="1"
+                PASSED_TESTS="0"
+                FAILED_TESTS="1"
+                ERROR_TESTS="0"
+              fi
+            fi
+            
+            # Store test results in GitHub outputs
+            echo "total_tests=$TOTAL_TESTS" >> $GITHUB_OUTPUT
+            echo "passed_tests=$PASSED_TESTS" >> $GITHUB_OUTPUT
+            echo "failed_tests=$FAILED_TESTS" >> $GITHUB_OUTPUT
+            echo "error_tests=$ERROR_TESTS" >> $GITHUB_OUTPUT
+            
+            # Create comprehensive test summary with error details and performance metrics
+            echo "# Test Results Summary" > test-results/reports/summary.md
+            echo "" >> test-results/reports/summary.md
+            echo "## Test Statistics" >> test-results/reports/summary.md
+            echo "- **Total Tests**: $TOTAL_TESTS" >> test-results/reports/summary.md
+            echo "- **Passed**: $PASSED_TESTS" >> test-results/reports/summary.md
+            echo "- **Failed**: $FAILED_TESTS" >> test-results/reports/summary.md
+            echo "- **Errors**: $ERROR_TESTS" >> test-results/reports/summary.md
+            echo "- **Haxe Version**: ${{ matrix.haxe-version }}" >> test-results/reports/summary.md
+            echo "- **Exit Code**: $TEST_EXIT_CODE" >> test-results/reports/summary.md
+            echo "- **Timestamp**: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> test-results/reports/summary.md
+            echo "" >> test-results/reports/summary.md
+            echo "## Performance Metrics" >> test-results/reports/summary.md
+            echo "- **Test Execution Time**: ${TEST_DURATION:-0}s" >> test-results/reports/summary.md
+            echo "- **Compilation Time**: ${COMPILATION_DURATION:-0}s" >> test-results/reports/summary.md
+            echo "- **Dependencies Time**: ${DEPS_DURATION:-0}s" >> test-results/reports/summary.md
+            echo "- **Dependencies Source**: ${DEPS_SOURCE:-unknown}" >> test-results/reports/summary.md
+            echo "- **Cache Status**: ${{ env.cache-status }}" >> test-results/reports/summary.md
+            
+            if [ $TEST_EXIT_CODE -ne 0 ]; then
+              echo "" >> test-results/reports/summary.md
+              echo "## ❌ Failure Analysis" >> test-results/reports/summary.md
+              
+              # Include compilation errors if found
+              if [ -f "test-results/reports/compilation-errors.log" ]; then
+                echo "" >> test-results/reports/summary.md
+                echo "### Compilation Errors" >> test-results/reports/summary.md
+                echo "\`\`\`" >> test-results/reports/summary.md
+                cat test-results/reports/compilation-errors.log >> test-results/reports/summary.md
+                echo "\`\`\`" >> test-results/reports/summary.md
+              fi
+              
+              # Include runtime errors if found
+              if [ -f "test-results/reports/runtime-errors.log" ]; then
+                echo "" >> test-results/reports/summary.md
+                echo "### Runtime Errors and Stack Traces" >> test-results/reports/summary.md
+                echo "\`\`\`" >> test-results/reports/summary.md
+                cat test-results/reports/runtime-errors.log >> test-results/reports/summary.md
+                echo "\`\`\`" >> test-results/reports/summary.md
+              fi
+              
+              # Include test failures if found
+              if [ -f "test-results/reports/test-failures.log" ]; then
+                echo "" >> test-results/reports/summary.md
+                echo "### Test Assertion Failures" >> test-results/reports/summary.md
+                echo "\`\`\`" >> test-results/reports/summary.md
+                cat test-results/reports/test-failures.log >> test-results/reports/summary.md
+                echo "\`\`\`" >> test-results/reports/summary.md
+              fi
+              
+              # Include general failure context
+              echo "" >> test-results/reports/summary.md
+              echo "### Full Error Context (Last 50 lines)" >> test-results/reports/summary.md
+              echo "\`\`\`" >> test-results/reports/summary.md
+              tail -50 test-results/logs/test-output.log >> test-results/reports/summary.md
+              echo "\`\`\`" >> test-results/reports/summary.md
+              
+              # Add troubleshooting section
+              echo "" >> test-results/reports/summary.md
+              echo "## 🔧 Troubleshooting" >> test-results/reports/summary.md
+              echo "1. Check the compilation errors section above for syntax issues" >> test-results/reports/summary.md
+              echo "2. Review runtime errors for logic problems or missing dependencies" >> test-results/reports/summary.md
+              echo "3. Examine test assertion failures for specific test cases that need attention" >> test-results/reports/summary.md
+              echo "4. View the full test output in the artifacts for complete context" >> test-results/reports/summary.md
+            else
+              echo "" >> test-results/reports/summary.md
+              echo "## ✅ Success Details" >> test-results/reports/summary.md
+              echo "All tests completed successfully with no errors or failures detected." >> test-results/reports/summary.md
+            fi
+          fi
+          
+          # Copy summary to legacy location for backward compatibility
+          cp test-results/reports/summary.md test-results/summary.md 2>/dev/null || true
+          
+          exit $TEST_EXIT_CODE
+        shell: bash
+        env:
+          HAXE_VERSION: ${{ matrix.haxe-version }}
+      
+      - name: Generate comprehensive test report
+        if: always()
+        run: |
+          echo "Generating comprehensive test report..."
+          
+          # Calculate job duration
+          JOB_END_TIME=$(date +%s)
+          JOB_START_TIME=${{ steps.job-timing.outputs.job-start-time }}
+          JOB_DURATION=$((JOB_END_TIME - JOB_START_TIME))
+          
+          # Create detailed test report with error analysis and performance metrics
+          cat > test-results/reports/report.json << EOF
+          {
+            "haxe_version": "${{ matrix.haxe-version }}",
+            "test_status": "${{ steps.test_execution.outputs.test_status }}",
+            "total_tests": ${{ steps.test_execution.outputs.total_tests }},
+            "passed_tests": ${{ steps.test_execution.outputs.passed_tests }},
+            "failed_tests": ${{ steps.test_execution.outputs.failed_tests }},
+            "error_tests": ${{ steps.test_execution.outputs.error_tests }},
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "workflow_run_id": "${{ github.run_id }}",
+            "commit_sha": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "performance": {
+              "job_duration_seconds": $JOB_DURATION,
+              "test_duration_seconds": ${{ steps.test_execution.outputs.test_duration || 0 }},
+              "compilation_duration_seconds": ${{ steps.test_execution.outputs.compilation_duration || 0 }},
+              "dependencies_duration_seconds": ${DEPS_DURATION:-0},
+              "dependencies_source": "${DEPS_SOURCE:-unknown}",
+              "cache_status": "${{ env.cache-status }}",
+              "workflow_start_time": ${{ env.WORKFLOW_START_TIME }},
+              "job_start_time": $JOB_START_TIME,
+              "job_end_time": $JOB_END_TIME
+            },
+            "artifacts": {
+              "has_compilation_errors": $([ -f "test-results/reports/compilation-errors.log" ] && echo "true" || echo "false"),
+              "has_runtime_errors": $([ -f "test-results/reports/runtime-errors.log" ] && echo "true" || echo "false"),
+              "has_test_failures": $([ -f "test-results/reports/test-failures.log" ] && echo "true" || echo "false"),
+              "system_info_available": $([ -f "test-results/logs/system-info.log" ] && echo "true" || echo "false")
+            }
+          }
+          EOF
+          
+          # Copy to legacy location for backward compatibility
+          cp test-results/reports/report.json test-results/report.json
+          
+          # Generate error summary for quick reference
+          if [ "${{ steps.test_execution.outputs.test_status }}" != "success" ]; then
+            echo "Generating error summary..."
+            
+            cat > test-results/reports/error-summary.txt << EOF
+          ERROR SUMMARY - Haxe ${{ matrix.haxe-version }}
+          ================================================
+          
+          Test Status: FAILED
+          Total Tests: ${{ steps.test_execution.outputs.total_tests }}
+          Passed: ${{ steps.test_execution.outputs.passed_tests }}
+          Failed: ${{ steps.test_execution.outputs.failed_tests }}
+          Errors: ${{ steps.test_execution.outputs.error_tests }}
+          
+          Error Types Detected:
+          EOF
+            
+            if [ -f "test-results/reports/compilation-errors.log" ]; then
+              echo "- Compilation Errors: YES" >> test-results/reports/error-summary.txt
+            else
+              echo "- Compilation Errors: NO" >> test-results/reports/error-summary.txt
+            fi
+            
+            if [ -f "test-results/reports/runtime-errors.log" ]; then
+              echo "- Runtime Errors: YES" >> test-results/reports/error-summary.txt
+            else
+              echo "- Runtime Errors: NO" >> test-results/reports/error-summary.txt
+            fi
+            
+            if [ -f "test-results/reports/test-failures.log" ]; then
+              echo "- Test Assertion Failures: YES" >> test-results/reports/error-summary.txt
+            else
+              echo "- Test Assertion Failures: NO" >> test-results/reports/error-summary.txt
+            fi
+            
+            echo "" >> test-results/reports/error-summary.txt
+            echo "For detailed error information, check the following files:" >> test-results/reports/error-summary.txt
+            echo "- test-results/reports/summary.md (formatted error details)" >> test-results/reports/error-summary.txt
+            echo "- test-results/logs/test-output.log (complete test output)" >> test-results/reports/error-summary.txt
+            echo "- test-results/logs/system-info.log (system diagnostics)" >> test-results/reports/error-summary.txt
+          fi
+          
+          echo "Test report generation completed successfully"
+        shell: bash
+      
+      - name: Upload test results and reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results-haxe-${{ matrix.haxe-version }}
+          path: |
+            test-results/
+            out/
+          retention-days: 30
+      
+      - name: Upload detailed failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: failure-artifacts-haxe-${{ matrix.haxe-version }}
+          path: |
+            test-results/logs/
+            test-results/reports/
+            out/
+            *.log
+            *.dump
+            core.*
+          retention-days: 14
+      
+      - name: Upload system diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: system-diagnostics-haxe-${{ matrix.haxe-version }}
+          path: |
+            test-results/logs/system-info.log
+            test-results/logs/test-stderr.log
+            test-results/logs/test-stdout.log
+          retention-days: 7
+
+  # Performance monitoring and metrics collection job
+  performance-metrics:
+    name: Performance Metrics Collection
+    runs-on: ubuntu-latest
+    needs: [performance-start, test]
+    if: always()
+    
+    steps:
+      - name: Download test results
+        uses: actions/download-artifact@v3
+        with:
+          path: test-results
+      
+      - name: Collect and analyze performance metrics
+        run: |
+          echo "Collecting performance metrics from all test jobs..."
+          
+          # Calculate total workflow duration
+          WORKFLOW_START_TIME=${{ needs.performance-start.outputs.start-time }}
+          WORKFLOW_END_TIME=$(date +%s)
+          TOTAL_WORKFLOW_DURATION=$((WORKFLOW_END_TIME - WORKFLOW_START_TIME))
+          
+          echo "=== Workflow Performance Summary ==="
+          echo "Total Workflow Duration: ${TOTAL_WORKFLOW_DURATION}s"
+          echo "Workflow Start Time: $(date -d @$WORKFLOW_START_TIME -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Workflow End Time: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          
+          # Analyze performance data from each test job
+          mkdir -p performance-analysis
+          
+          # Create performance summary
+          cat > performance-analysis/workflow-performance.json << EOF
+          {
+            "workflow_id": "${{ github.run_id }}",
+            "commit_sha": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "total_duration_seconds": $TOTAL_WORKFLOW_DURATION,
+            "start_time": $WORKFLOW_START_TIME,
+            "end_time": $WORKFLOW_END_TIME,
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "jobs": []
+          }
+          EOF
+          
+          # Process each test result file
+          for dir in test-results/test-results-haxe-*; do
+            if [ -d "$dir" ]; then
+              echo "Processing performance data from: $dir"
+              
+              # Try new reports location first, then fall back to legacy location
+              REPORT_FILE=""
+              if [ -f "$dir/reports/report.json" ]; then
+                REPORT_FILE="$dir/reports/report.json"
+              elif [ -f "$dir/report.json" ]; then
+                REPORT_FILE="$dir/report.json"
+              fi
+              
+              if [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ]; then
+                echo "Found performance data in: $REPORT_FILE"
+                
+                # Extract key metrics
+                HAXE_VERSION=$(jq -r '.haxe_version // "unknown"' "$REPORT_FILE")
+                JOB_DURATION=$(jq -r '.performance.job_duration_seconds // 0' "$REPORT_FILE")
+                TEST_DURATION=$(jq -r '.performance.test_duration_seconds // 0' "$REPORT_FILE")
+                DEPS_DURATION=$(jq -r '.performance.dependencies_duration_seconds // 0' "$REPORT_FILE")
+                CACHE_STATUS=$(jq -r '.performance.cache_status // "unknown"' "$REPORT_FILE")
+                
+                echo "  Haxe $HAXE_VERSION: Job=${JOB_DURATION}s, Tests=${TEST_DURATION}s, Deps=${DEPS_DURATION}s, Cache=${CACHE_STATUS}"
+                
+                # Add to summary (simplified approach since jq manipulation is complex in shell)
+                echo "    {" >> performance-analysis/job-details.json
+                echo "      \"haxe_version\": \"$HAXE_VERSION\"," >> performance-analysis/job-details.json
+                echo "      \"job_duration_seconds\": $JOB_DURATION," >> performance-analysis/job-details.json
+                echo "      \"test_duration_seconds\": $TEST_DURATION," >> performance-analysis/job-details.json
+                echo "      \"dependencies_duration_seconds\": $DEPS_DURATION," >> performance-analysis/job-details.json
+                echo "      \"cache_status\": \"$CACHE_STATUS\"" >> performance-analysis/job-details.json
+                echo "    }," >> performance-analysis/job-details.json
+              fi
+            fi
+          done
+          
+          # Create performance insights
+          echo "=== Performance Insights ===" > performance-analysis/insights.md
+          echo "" >> performance-analysis/insights.md
+          echo "## Workflow Performance Summary" >> performance-analysis/insights.md
+          echo "- **Total Duration**: ${TOTAL_WORKFLOW_DURATION}s" >> performance-analysis/insights.md
+          echo "- **Workflow ID**: ${{ github.run_id }}" >> performance-analysis/insights.md
+          echo "- **Commit**: ${{ github.sha }}" >> performance-analysis/insights.md
+          echo "- **Branch**: ${{ github.ref_name }}" >> performance-analysis/insights.md
+          echo "" >> performance-analysis/insights.md
+          
+          # Add recommendations based on performance
+          echo "## Performance Recommendations" >> performance-analysis/insights.md
+          if [ $TOTAL_WORKFLOW_DURATION -gt 300 ]; then
+            echo "⚠️ **Workflow duration is over 5 minutes. Consider optimizing:**" >> performance-analysis/insights.md
+            echo "- Review dependency caching effectiveness" >> performance-analysis/insights.md
+            echo "- Consider reducing test scope or parallelization" >> performance-analysis/insights.md
+            echo "- Check for unnecessary steps or redundant operations" >> performance-analysis/insights.md
+          elif [ $TOTAL_WORKFLOW_DURATION -lt 120 ]; then
+            echo "✅ **Excellent performance! Workflow completed in under 2 minutes.**" >> performance-analysis/insights.md
+          else
+            echo "✅ **Good performance. Workflow completed in reasonable time.**" >> performance-analysis/insights.md
+          fi
+          
+          echo "Performance metrics collection completed successfully"
+      
+      - name: Upload performance analysis
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-analysis
+          path: performance-analysis/
+          retention-days: 30
+
+  report:
+    name: Test Results Report
+    runs-on: ubuntu-latest
+    needs: [test, performance-metrics]
+    if: always() && github.event_name == 'pull_request'
+    
+    steps:
+      - name: Download test results
+        uses: actions/download-artifact@v3
+        with:
+          path: test-results
+      
+      - name: Generate PR comment
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Find all test result files
+            const testResultDirs = fs.readdirSync('test-results');
+            let allResults = [];
+            
+            for (const dir of testResultDirs) {
+              if (dir.startsWith('test-results-haxe-')) {
+                // Try new reports location first, then fall back to legacy location
+                const newReportPath = path.join('test-results', dir, 'reports', 'report.json');
+                const legacyReportPath = path.join('test-results', dir, 'report.json');
+                
+                let reportPath = null;
+                if (fs.existsSync(newReportPath)) {
+                  reportPath = newReportPath;
+                } else if (fs.existsSync(legacyReportPath)) {
+                  reportPath = legacyReportPath;
+                }
+                
+                if (reportPath) {
+                  const reportContent = fs.readFileSync(reportPath, 'utf8');
+                  try {
+                    const report = JSON.parse(reportContent);
+                    allResults.push(report);
+                  } catch (e) {
+                    console.log(`Failed to parse report from ${reportPath}: ${e.message}`);
+                  }
+                }
+              }
+            }
+            
+            if (allResults.length === 0) {
+              console.log('No test results found');
+              return;
+            }
+            
+            // Generate comment body with performance metrics
+            let commentBody = '## 🧪 Test Results\n\n';
+            
+            let overallStatus = 'success';
+            let totalTests = 0;
+            let totalPassed = 0;
+            let totalFailed = 0;
+            let totalErrors = 0;
+            let totalJobDuration = 0;
+            let totalTestDuration = 0;
+            let cacheHits = 0;
+            
+            // Enhanced summary table with performance
+            commentBody += '| Haxe Version | Status | Total | Passed | Failed | Errors | Duration | Cache |\n';
+            commentBody += '|--------------|--------|-------|--------|--------|--------|----------|-------|\n';
+            
+            for (const result of allResults) {
+              const status = result.test_status === 'success' ? '✅' : '❌';
+              if (result.test_status !== 'success') {
+                overallStatus = 'failure';
+              }
+              
+              totalTests += result.total_tests || 0;
+              totalPassed += result.passed_tests || 0;
+              totalFailed += result.failed_tests || 0;
+              totalErrors += result.error_tests || 0;
+              
+              // Extract performance metrics
+              const jobDuration = result.performance?.job_duration_seconds || 0;
+              const testDuration = result.performance?.test_duration_seconds || 0;
+              const cacheStatus = result.performance?.cache_status || 'unknown';
+              
+              totalJobDuration += jobDuration;
+              totalTestDuration += testDuration;
+              if (cacheStatus === 'hit') cacheHits++;
+              
+              const durationDisplay = jobDuration > 0 ? `${jobDuration}s` : 'N/A';
+              const cacheDisplay = cacheStatus === 'hit' ? '✅' : (cacheStatus === 'miss' ? '❌' : '❓');
+              
+              commentBody += `| ${result.haxe_version} | ${status} | ${result.total_tests || 0} | ${result.passed_tests || 0} | ${result.failed_tests || 0} | ${result.error_tests || 0} | ${durationDisplay} | ${cacheDisplay} |\n`;
+            }
+            
+            // Overall summary with performance metrics
+            commentBody += '\n### Overall Summary\n';
+            commentBody += `- **Total Tests**: ${totalTests}\n`;
+            commentBody += `- **Passed**: ${totalPassed}\n`;
+            commentBody += `- **Failed**: ${totalFailed}\n`;
+            commentBody += `- **Errors**: ${totalErrors}\n`;
+            commentBody += '\n### ⚡ Performance Metrics\n';
+            commentBody += `- **Total Job Duration**: ${totalJobDuration}s\n`;
+            commentBody += `- **Total Test Duration**: ${totalTestDuration}s\n`;
+            commentBody += `- **Cache Hit Rate**: ${allResults.length > 0 ? Math.round((cacheHits / allResults.length) * 100) : 0}% (${cacheHits}/${allResults.length})\n`;
+            commentBody += `- **Parallel Jobs**: ${allResults.length}\n`;
+            
+            if (overallStatus === 'success') {
+              commentBody += '\n✅ **All tests passed!**\n';
+            } else {
+              commentBody += '\n❌ **Some tests failed. Please check the details above.**\n';
+            }
+            
+            // Add failure details if any
+            for (const result of allResults) {
+              if (result.test_status !== 'success') {
+                const summaryPath = path.join('test-results', `test-results-haxe-${result.haxe_version}`, 'summary.md');
+                const reportsPath = path.join('test-results', `test-results-haxe-${result.haxe_version}`, 'reports', 'summary.md');
+                
+                // Try the new reports location first, then fall back to legacy location
+                let summaryContent = '';
+                if (fs.existsSync(reportsPath)) {
+                  summaryContent = fs.readFileSync(reportsPath, 'utf8');
+                } else if (fs.existsSync(summaryPath)) {
+                  summaryContent = fs.readFileSync(summaryPath, 'utf8');
+                }
+                
+                if (summaryContent) {
+                  commentBody += `\n### 🔍 Failure Details - Haxe ${result.haxe_version}\n`;
+                  commentBody += summaryContent;
+                  
+                  // Add links to detailed artifacts
+                  commentBody += `\n#### 📋 Available Artifacts\n`;
+                  commentBody += `- [Failure Artifacts](${context.payload.repository.html_url}/actions/runs/${context.runId}) - Detailed logs and error reports\n`;
+                  commentBody += `- [System Diagnostics](${context.payload.repository.html_url}/actions/runs/${context.runId}) - System information and environment details\n`;
+                }
+              }
+            }
+            
+            commentBody += `\n---\n*Test results from commit ${context.sha.substring(0, 7)} • [View full workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId})*`;
+            
+            // Find existing comment to update or create new one
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('🧪 Test Results')
+            );
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody
+              });
+              console.log('Updated existing test results comment');
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+              console.log('Created new test results comment');
+            }
+
+  status:
+    name: Update Commit Status
+    runs-on: ubuntu-latest
+    needs: [test, performance-metrics]
+    if: always()
+    
+    steps:
+      - name: Download test results
+        uses: actions/download-artifact@v3
+        with:
+          path: test-results
+      
+      - name: Update commit status
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Find all test result files
+            const testResultDirs = fs.readdirSync('test-results');
+            let allResults = [];
+            
+            for (const dir of testResultDirs) {
+              if (dir.startsWith('test-results-haxe-')) {
+                // Try new reports location first, then fall back to legacy location
+                const newReportPath = path.join('test-results', dir, 'reports', 'report.json');
+                const legacyReportPath = path.join('test-results', dir, 'report.json');
+                
+                let reportPath = null;
+                if (fs.existsSync(newReportPath)) {
+                  reportPath = newReportPath;
+                } else if (fs.existsSync(legacyReportPath)) {
+                  reportPath = legacyReportPath;
+                }
+                
+                if (reportPath) {
+                  const reportContent = fs.readFileSync(reportPath, 'utf8');
+                  try {
+                    const report = JSON.parse(reportContent);
+                    allResults.push(report);
+                  } catch (e) {
+                    console.log(`Failed to parse report from ${reportPath}: ${e.message}`);
+                  }
+                }
+              }
+            }
+            
+            if (allResults.length === 0) {
+              console.log('No test results found, setting status to error');
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: 'error',
+                context: 'ci/tests',
+                description: 'No test results found'
+              });
+              return;
+            }
+            
+            // Determine overall status
+            let overallStatus = 'success';
+            let totalTests = 0;
+            let totalPassed = 0;
+            let totalFailed = 0;
+            let failedVersions = [];
+            
+            for (const result of allResults) {
+              totalTests += result.total_tests || 0;
+              totalPassed += result.passed_tests || 0;
+              totalFailed += result.failed_tests || 0;
+              
+              if (result.test_status !== 'success') {
+                overallStatus = 'failure';
+                failedVersions.push(result.haxe_version);
+              }
+            }
+            
+            // Create status description
+            let description;
+            if (overallStatus === 'success') {
+              description = `All tests passed (${totalPassed}/${totalTests})`;
+            } else {
+              description = `Tests failed on Haxe ${failedVersions.join(', ')} (${totalPassed}/${totalTests} passed)`;
+            }
+            
+            // Update commit status
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: overallStatus,
+              context: 'ci/tests',
+              description: description,
+              target_url: `${context.payload.repository.html_url}/actions/runs/${context.runId}`
+            });
+            
+            console.log(`Updated commit status to ${overallStatus}: ${description}`);
+            
+            // Also create individual status checks for each Haxe version
+            for (const result of allResults) {
+              const versionStatus = result.test_status === 'success' ? 'success' : 'failure';
+              const versionDescription = result.test_status === 'success' 
+                ? `Tests passed (${result.passed_tests}/${result.total_tests})`
+                : `Tests failed (${result.passed_tests}/${result.total_tests} passed)`;
+              
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: versionStatus,
+                context: `ci/tests/haxe-${result.haxe_version}`,
+                description: versionDescription,
+                target_url: `${context.payload.repository.html_url}/actions/runs/${context.runId}`
+              });
+              
+              console.log(`Updated status for Haxe ${result.haxe_version}: ${versionStatus}`);
+            }

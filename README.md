@@ -372,6 +372,128 @@ const client = new SpotOnClient(credentials, {
 });
 ```
 
+## Continuous Integration
+
+[![CI](https://github.com/spoton/spoton-haxe-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/spoton/spoton-haxe-sdk/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/github/actions/workflow/status/spoton/spoton-haxe-sdk/ci.yml?label=tests)](https://github.com/spoton/spoton-haxe-sdk/actions/workflows/ci.yml)
+
+This project uses GitHub Actions for continuous integration to ensure code quality and prevent regressions. The CI system automatically runs tests on every push and pull request.
+
+### CI/CD Features
+
+- **Automated Testing**: Tests run automatically on every push and pull request
+- **Multi-Version Support**: Tests against Haxe 4.2.x and 4.3.x for compatibility
+- **Branch Protection**: Main branch is protected and requires passing tests before merge
+- **Dependency Caching**: Faster builds through intelligent dependency caching
+- **Test Reporting**: Detailed test results and coverage information
+- **Status Checks**: Clear pass/fail indicators on commits and pull requests
+
+### Workflow Triggers
+
+The CI workflow runs automatically when:
+
+- Code is pushed to any branch
+- A pull request is opened or updated
+- Manual workflow dispatch is triggered
+
+### Test Matrix
+
+Tests run against multiple Haxe versions to ensure compatibility:
+
+- **Haxe 4.2.5** - Stable LTS version
+- **Haxe 4.3.4** - Latest stable version
+
+All versions must pass for the build to be considered successful.
+
+### Branch Protection Rules
+
+The main branch is protected with the following requirements:
+
+- **Pull Request Required**: Direct pushes to main are not allowed
+- **Status Checks Required**: All CI tests must pass before merging
+- **Up-to-date Branch Required**: Branches must be current with main before merging
+- **Administrator Override**: Administrators can bypass restrictions if needed
+
+### Setting Up Branch Protection
+
+To configure branch protection rules for your fork:
+
+1. Go to your repository's **Settings** → **Branches**
+2. Click **Add rule** for the `main` branch
+3. Enable the following options:
+   - ✅ Require a pull request before merging
+   - ✅ Require status checks to pass before merging
+   - ✅ Require branches to be up to date before merging
+   - ✅ Include administrators (optional)
+4. In the status checks section, add:
+   - `CI / test (4.2.5)`
+   - `CI / test (4.3.4)`
+5. Save the protection rule
+
+For detailed setup instructions, see [Branch Protection Setup Guide](.github/docs/BRANCH_PROTECTION_SETUP.md).
+
+### Troubleshooting CI Issues
+
+#### Common Issues and Solutions
+
+**Build Fails with "Haxe not found"**
+```bash
+# Solution: Ensure the setup-haxe action is properly configured
+- uses: krdlab/setup-haxe@v1
+  with:
+    haxe-version: ${{ matrix.haxe-version }}
+```
+
+**Dependencies fail to install**
+```bash
+# Check if haxelib.json is valid
+haxelib install --always
+
+# Clear cache if dependencies are corrupted
+# Go to Actions → Caches and delete relevant cache entries
+```
+
+**Tests pass locally but fail in CI**
+- Check for platform-specific differences (line endings, file paths)
+- Ensure all test dependencies are listed in haxelib.json
+- Verify test files are included in the repository
+
+**Cache issues causing slow builds**
+- Cache is automatically managed based on haxelib.json changes
+- Manual cache clearing: Go to repository Settings → Actions → Caches
+- Cache keys are based on `haxelib-${{ hashFiles('haxelib.json') }}`
+
+**Status checks not appearing on PRs**
+- Verify branch protection rules are configured correctly
+- Check that workflow file is in `.github/workflows/ci.yml`
+- Ensure workflow has proper permissions in repository settings
+
+#### Getting Help
+
+If you encounter CI issues:
+
+1. **Check the workflow logs**: Click on the failed status check for detailed error information
+2. **Review recent changes**: Compare with the last successful build
+3. **Test locally**: Run `haxe build-test.hxml` to reproduce issues locally
+4. **Check dependencies**: Ensure all required libraries are in haxelib.json
+
+For detailed troubleshooting steps, see the [CI Troubleshooting Guide](.github/docs/CI_TROUBLESHOOTING.md).
+
+For persistent issues, please [open an issue](https://github.com/spoton/spoton-haxe-sdk/issues) with:
+- Link to the failed workflow run
+- Error messages from the logs
+- Steps to reproduce locally
+
+### Performance Optimization
+
+The CI system includes several optimizations for faster builds:
+
+- **Dependency Caching**: Haxelib dependencies are cached between runs
+- **Parallel Execution**: Different Haxe versions run in parallel
+- **Incremental Builds**: Only changed components are rebuilt when possible
+
+For more details, see [Performance Optimization Guide](.github/docs/PERFORMANCE_OPTIMIZATION.md).
+
 ## API Documentation
 
 For detailed API documentation, visit:

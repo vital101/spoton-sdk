@@ -1,0 +1,159 @@
+# GitHub Actions Performance Configuration
+# This file contains performance optimization settings and recommendations
+
+# Concurrency Settings
+concurrency:
+  # Recommended concurrency group pattern
+  group_pattern: "${{ github.workflow }}-${{ github.ref }}"
+  # Cancel in-progress runs for feature branches
+  cancel_in_progress: true
+  # Exceptions (branches where cancellation should be disabled)
+  protected_branches:
+    - main
+    - develop
+    - master
+
+# Caching Configuration
+caching:
+  # Cache strategies for different dependency types
+  strategies:
+    haxelib:
+      # Primary cache key pattern
+      key_pattern: "haxelib-${{ matrix.haxe-version }}-${{ hashFiles('haxelib.json') }}-v2"
+      # Fallback restore keys (in order of preference)
+      restore_keys:
+        - "haxelib-${{ matrix.haxe-version }}-${{ hashFiles('haxelib.json') }}-"
+        - "haxelib-${{ matrix.haxe-version }}-"
+        - "haxelib-"
+      # Cache path
+      path: "~/.haxelib"
+      # Retention period (days)
+      retention_days: 7
+    
+    # Additional cache strategies can be added here
+    # npm:
+    #   key_pattern: "npm-${{ hashFiles('package-lock.json') }}"
+    #   path: "~/.npm"
+
+# Parallel Execution Settings
+parallelization:
+  # Matrix job settings
+  matrix:
+    # Maximum parallel jobs (balance between speed and resource usage)
+    max_parallel: 2
+    # Fail-fast setting (false for comprehensive testing, true for quick feedback)
+    fail_fast: false
+  
+  # Job dependencies optimization
+  dependencies:
+    # Jobs that can run in parallel
+    parallel_jobs:
+      - test
+      - lint  # if exists
+      - security-scan  # if exists
+    
+    # Jobs that should run sequentially
+    sequential_jobs:
+      - performance-start
+      - test
+      - performance-metrics
+      - report
+
+# Performance Monitoring
+monitoring:
+  # Metrics to collect
+  metrics:
+    - job_duration
+    - test_execution_time
+    - compilation_time
+    - dependency_installation_time
+    - cache_hit_rate
+    - workflow_total_duration
+  
+  # Performance thresholds (in seconds)
+  thresholds:
+    workflow_warning: 300  # 5 minutes
+    workflow_error: 600    # 10 minutes
+    job_warning: 180       # 3 minutes
+    job_error: 300         # 5 minutes
+    test_warning: 120      # 2 minutes
+    test_error: 240        # 4 minutes
+  
+  # Artifact retention
+  artifacts:
+    performance_data: 30   # days
+    failure_logs: 14       # days
+    system_diagnostics: 7  # days
+
+# Resource Optimization
+resources:
+  # Runner configuration
+  runners:
+    # Preferred runner type for best performance
+    preferred: "ubuntu-latest"
+    # Alternative runners for specific needs
+    alternatives:
+      windows: "windows-latest"
+      macos: "macos-latest"
+  
+  # Checkout optimization
+  checkout:
+    # Fetch depth (1 for shallow clone, 0 for full history)
+    fetch_depth: 1
+    # Whether to fetch LFS files
+    lfs: false
+    # Submodules handling
+    submodules: false
+
+# Environment Optimization
+environment:
+  # Global environment variables for performance
+  global_vars:
+    FORCE_COLOR: "1"        # Enable colored output
+    CI: "true"              # Indicate CI environment
+    NODE_OPTIONS: "--max-old-space-size=4096"  # If using Node.js
+  
+  # Per-job environment variables
+  job_vars:
+    test:
+      HAXE_VERSION: "${{ matrix.haxe-version }}"
+      HAXELIB_ROOT: "~/.haxelib"
+
+# Optimization Recommendations
+recommendations:
+  # High-impact optimizations
+  high_impact:
+    - "Implement dependency caching with proper cache keys"
+    - "Use concurrency controls to prevent resource conflicts"
+    - "Configure parallel matrix execution"
+    - "Add performance monitoring and metrics collection"
+  
+  # Medium-impact optimizations
+  medium_impact:
+    - "Optimize checkout settings (shallow clone, no LFS)"
+    - "Use conditional job execution to skip unnecessary work"
+    - "Implement incremental builds where possible"
+    - "Configure appropriate artifact retention policies"
+  
+  # Low-impact optimizations
+  low_impact:
+    - "Use colored output for better readability"
+    - "Set appropriate environment variables"
+    - "Optimize log output and reduce verbosity"
+    - "Use specific action versions instead of latest"
+
+# Performance Monitoring Dashboard
+dashboard:
+  # Key metrics to track over time
+  key_metrics:
+    - average_workflow_duration
+    - cache_hit_rate_trend
+    - test_execution_time_trend
+    - failure_rate
+    - resource_usage
+  
+  # Alerting thresholds
+  alerts:
+    workflow_duration_increase: 20  # percent increase
+    cache_hit_rate_decrease: 10     # percent decrease
+    test_failure_rate_increase: 5   # percent increase
