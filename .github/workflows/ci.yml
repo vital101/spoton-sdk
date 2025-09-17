@@ -124,25 +124,25 @@ jobs:
           fi
           
           # Install dependencies with error handling
-          if ! haxelib install --always; then
-            echo "Error: Failed to install dependencies"
-            echo "Attempting to diagnose the issue..."
-            
-            # Show haxelib version and configuration
-            echo "Haxelib version:"
-            haxelib version
-            
+          echo "Installing haxe-concurrent..."
+          if ! haxelib install haxe-concurrent --always; then
+            echo "Error: Failed to install haxe-concurrent"
+            exit 1
+          fi
+          
+          echo "Installing utest..."
+          if ! haxelib install utest --always; then
+            echo "Error: Failed to install utest"
+            exit 1
+          fi
+          
+          # Verify installations succeeded
+          if ! haxelib path haxe-concurrent >/dev/null 2>&1 || ! haxelib path utest >/dev/null 2>&1; then
+            echo "Error: Dependency installation verification failed"
             echo "Haxelib configuration:"
             haxelib config
-            
-            echo "Contents of haxelib.json:"
-            cat haxelib.json
-            
-            # Try to install dependencies individually for better error reporting
-            echo "Attempting individual dependency installation..."
-            haxelib install haxe-concurrent --always || echo "Failed to install haxe-concurrent"
-            haxelib install utest --always || echo "Failed to install utest"
-            
+            echo "Installed libraries:"
+            haxelib list
             exit 1
           fi
           
@@ -193,7 +193,7 @@ jobs:
             
             # Try to reinstall failed dependencies
             echo "Reinstalling dependencies..."
-            haxelib install --always 2>&1 | tee test-results/logs/dependency-recovery.log
+            (haxelib install haxe-concurrent --always && haxelib install utest --always) 2>&1 | tee test-results/logs/dependency-recovery.log
             
             # Verify again after recovery attempt
             if haxelib path haxe-concurrent >/dev/null 2>&1 && haxelib path utest >/dev/null 2>&1; then

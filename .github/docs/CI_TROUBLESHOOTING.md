@@ -85,6 +85,7 @@ Error: Process completed with exit code 1
 ```
 Error: Library haxe-concurrent is not installed
 Error: Could not process argument --library
+Library name or hxml file: : Error: Eof
 ```
 
 **Solutions**:
@@ -93,6 +94,16 @@ Error: Could not process argument --library
 ```bash
 # Validate JSON syntax
 cat haxelib.json | python -m json.tool
+```
+
+**Fix stdin/EOF errors**:
+```yaml
+# Don't use haxelib install --always without arguments
+# This tries to read from stdin and fails in CI
+- name: Install dependencies correctly
+  run: |
+    haxelib install haxe-concurrent --always
+    haxelib install utest --always
 ```
 
 **Clear dependency cache**:
@@ -109,6 +120,8 @@ cat haxelib.json | python -m json.tool
     haxelib install utest --always
     haxelib list
 ```
+
+**Note**: Avoid using `haxelib install --always` without arguments as it tries to read from stdin and will fail in CI environments.
 
 ### 4. Test Execution Failures
 
