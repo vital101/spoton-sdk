@@ -437,28 +437,49 @@ jobs:
         run: |
           echo "Generating comprehensive test report..."
           
+          # Ensure test-results directories exist
+          mkdir -p test-results/{logs,reports,artifacts}
+          
           # Calculate job duration
           JOB_END_TIME=$(date +%s)
           JOB_START_TIME=${{ steps.job-timing.outputs.job-start-time }}
           JOB_DURATION=$((JOB_END_TIME - JOB_START_TIME))
           
+          # Set default values for potentially empty outputs
+          TEST_STATUS="${{ steps.test_execution.outputs.test_status }}"
+          TOTAL_TESTS="${{ steps.test_execution.outputs.total_tests }}"
+          PASSED_TESTS="${{ steps.test_execution.outputs.passed_tests }}"
+          FAILED_TESTS="${{ steps.test_execution.outputs.failed_tests }}"
+          ERROR_TESTS="${{ steps.test_execution.outputs.error_tests }}"
+          TEST_DURATION="${{ steps.test_execution.outputs.test_duration }}"
+          COMPILATION_DURATION="${{ steps.test_execution.outputs.compilation_duration }}"
+          
+          # Use defaults if values are empty
+          TEST_STATUS="${TEST_STATUS:-unknown}"
+          TOTAL_TESTS="${TOTAL_TESTS:-0}"
+          PASSED_TESTS="${PASSED_TESTS:-0}"
+          FAILED_TESTS="${FAILED_TESTS:-0}"
+          ERROR_TESTS="${ERROR_TESTS:-0}"
+          TEST_DURATION="${TEST_DURATION:-0}"
+          COMPILATION_DURATION="${COMPILATION_DURATION:-0}"
+          
           # Create detailed test report with error analysis and performance metrics
           cat > test-results/reports/report.json << EOF
           {
             "haxe_version": "${{ matrix.haxe-version }}",
-            "test_status": "${{ steps.test_execution.outputs.test_status }}",
-            "total_tests": ${{ steps.test_execution.outputs.total_tests }},
-            "passed_tests": ${{ steps.test_execution.outputs.passed_tests }},
-            "failed_tests": ${{ steps.test_execution.outputs.failed_tests }},
-            "error_tests": ${{ steps.test_execution.outputs.error_tests }},
+            "test_status": "$TEST_STATUS",
+            "total_tests": $TOTAL_TESTS,
+            "passed_tests": $PASSED_TESTS,
+            "failed_tests": $FAILED_TESTS,
+            "error_tests": $ERROR_TESTS,
             "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "workflow_run_id": "${{ github.run_id }}",
             "commit_sha": "${{ github.sha }}",
             "branch": "${{ github.ref_name }}",
             "performance": {
               "job_duration_seconds": $JOB_DURATION,
-              "test_duration_seconds": ${{ steps.test_execution.outputs.test_duration || 0 }},
-              "compilation_duration_seconds": ${{ steps.test_execution.outputs.compilation_duration || 0 }},
+              "test_duration_seconds": $TEST_DURATION,
+              "compilation_duration_seconds": $COMPILATION_DURATION,
               "dependencies_duration_seconds": ${DEPS_DURATION:-0},
               "dependencies_source": "${DEPS_SOURCE:-unknown}",
               "cache_status": "${{ env.cache-status }}",
@@ -479,7 +500,7 @@ jobs:
           cp test-results/reports/report.json test-results/report.json
           
           # Generate error summary for quick reference
-          if [ "${{ steps.test_execution.outputs.test_status }}" != "success" ]; then
+          if [ "$TEST_STATUS" != "success" ]; then
             echo "Generating error summary..."
             
             cat > test-results/reports/error-summary.txt << EOF
@@ -487,10 +508,10 @@ jobs:
           ================================================
           
           Test Status: FAILED
-          Total Tests: ${{ steps.test_execution.outputs.total_tests }}
-          Passed: ${{ steps.test_execution.outputs.passed_tests }}
-          Failed: ${{ steps.test_execution.outputs.failed_tests }}
-          Errors: ${{ steps.test_execution.outputs.error_tests }}
+          Total Tests: $TOTAL_TESTS
+          Passed: $PASSED_TESTS
+          Failed: $FAILED_TESTS
+          Errors: $ERROR_TESTS
           
           Error Types Detected:
           EOF
