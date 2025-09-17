@@ -1,0 +1,7 @@
+{
+  "id": "MENU-LUNCH-001",
+  "location_id": "BL-1234-5678-9012-3456",
+  "name": "Lunch Menu",
+  "active": true,
+  "created_at": "2023-01-15T08:00:00Z"
+}

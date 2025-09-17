@@ -1,0 +1,38 @@
+{
+  "locations": [
+    {
+      "id": "BL-1234-5678-9012-3456",
+      "name": "Downtown Bistro",
+      "email": "manager@downtownbistro.com",
+      "phone": "+1-555-0123",
+      "address": {
+        "address_line_1": "123 Main Street",
+        "city": "San Francisco",
+        "state": "CA",
+        "zip": "94102",
+        "country": "US"
+      },
+      "timezone": "America/Los_Angeles"
+    },
+    {
+      "id": "BL-5678-9012-3456-7890",
+      "name": "Uptown Cafe",
+      "email": "manager@uptowncafe.com",
+      "phone": "+1-555-0124",
+      "address": {
+        "address_line_1": "456 Broadway",
+        "city": "New York",
+        "state": "NY",
+        "zip": "10013",
+        "country": "US"
+      },
+      "timezone": "America/New_York"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 20,
+    "total": 2,
+    "total_pages": 1
+  }
+}

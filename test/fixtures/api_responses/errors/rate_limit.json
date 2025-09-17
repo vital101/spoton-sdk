@@ -1,0 +1,8 @@
+{
+  "error": "Rate Limit Exceeded",
+  "message": "Too many requests. Please try again later",
+  "code": "RATE_LIMIT_EXCEEDED",
+  "status": 429,
+  "retry_after": 60,
+  "timestamp": "2023-12-01T10:30:00Z"
+}

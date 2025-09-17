@@ -1,0 +1,24 @@
+{
+  "error": "Validation Error",
+  "message": "The request contains invalid data",
+  "code": "VALIDATION_ERROR",
+  "status": 422,
+  "details": [
+    {
+      "field": "email",
+      "message": "Invalid email format",
+      "code": "INVALID_FORMAT"
+    },
+    {
+      "field": "phone",
+      "message": "Phone number is required",
+      "code": "REQUIRED_FIELD"
+    },
+    {
+      "field": "quantity",
+      "message": "Quantity must be greater than 0",
+      "code": "INVALID_VALUE"
+    }
+  ],
+  "timestamp": "2023-12-01T10:30:00Z"
+}

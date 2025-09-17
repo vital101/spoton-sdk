@@ -1,0 +1,7 @@
+{
+  "error": "Unauthorized",
+  "message": "Invalid or missing authentication credentials",
+  "code": "UNAUTHORIZED",
+  "status": 401,
+  "timestamp": "2023-12-01T10:30:00Z"
+}

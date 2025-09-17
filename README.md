@@ -328,21 +328,43 @@ export SPOTON_DEBUG="true"  # Enable debug mode
 
 ## Testing
 
+The SDK includes a comprehensive test suite built with Haxe's utest framework, covering all core functionality including authentication, HTTP clients, endpoints, models, and utilities.
+
 ### Running Tests
 
 ```bash
-# Run all platform tests
-npm test
+# Run the complete test suite
+haxe build-test.hxml
 
-# Test specific platform
-npm run test:php
-npm run test:python
-npm run test:nodejs
+# This will:
+# 1. Compile all test files
+# 2. Execute tests using the Neko target
+# 3. Display test results with pass/fail status
 ```
+
+### Test Structure
+
+The test suite is organized into several categories:
+
+- **Core Tests**: `SpotOnClientTest` - Main client functionality
+- **Authentication**: `AuthenticationManagerTest`, `CredentialsTest`
+- **HTTP Layer**: `HTTPClientTest`, `ResponseTest`
+- **Endpoints**: Tests for all API endpoints (Business, Orders, Menus, etc.)
+- **Models**: Comprehensive model validation and serialization tests
+- **Utilities**: Helper functions and data transformation tests
+- **Error Handling**: Exception and error response tests
+
+### Test Configuration
+
+Tests use mock implementations to avoid making real API calls:
+
+- `MockAuthenticationManager` - Simulates authentication flows
+- `MockHTTPClient` - Provides controlled HTTP responses
+- Test fixtures in `test/fixtures/` - Sample data and helpers
 
 ### Sandbox Environment
 
-For testing, use SpotOn's sandbox environment:
+For integration testing with real API calls, use SpotOn's sandbox environment:
 
 ```javascript
 const client = new SpotOnClient(credentials, {

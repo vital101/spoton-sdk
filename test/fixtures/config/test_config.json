@@ -1,0 +1,23 @@
+{
+  "default": {
+    "enableMocks": true,
+    "logLevel": "ERROR",
+    "timeoutMs": 5000,
+    "retryAttempts": 3,
+    "baseUrl": "https://api.spoton.com"
+  },
+  "development": {
+    "enableMocks": true,
+    "logLevel": "DEBUG",
+    "timeoutMs": 10000,
+    "retryAttempts": 1,
+    "baseUrl": "https://api-dev.spoton.com"
+  },
+  "production": {
+    "enableMocks": false,
+    "logLevel": "ERROR",
+    "timeoutMs": 30000,
+    "retryAttempts": 5,
+    "baseUrl": "https://api.spoton.com"
+  }
+}

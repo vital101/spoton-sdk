@@ -1,14 +1,15 @@
 {
   "name": "spoton-sdk",
-  "url": "https://github.com/spoton/spoton-haxe-sdk",
+  "url": "https://github.com/vital101/spoton-sdk",
   "license": "MIT",
   "tags": ["api", "sdk", "spoton", "cross-platform"],
   "description": "SpotOn Central API SDK for Haxe - compiles to PHP, Python, and Node.js",
   "version": "0.1.0",
   "classPath": "src/",
   "releasenote": "Initial project structure",
-  "contributors": ["SpotOn"],
+  "contributors": ["vital101"],
   "dependencies": {
-    "haxe-concurrent": ""
+    "haxe-concurrent": "",
+    "utest": ""
   }
 }

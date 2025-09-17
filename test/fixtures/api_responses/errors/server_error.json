@@ -1,0 +1,7 @@
+{
+  "error": "Internal Server Error",
+  "message": "An unexpected error occurred on the server",
+  "code": "INTERNAL_SERVER_ERROR",
+  "status": 500,
+  "timestamp": "2023-12-01T10:30:00Z"
+}

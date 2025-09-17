@@ -1,0 +1,13 @@
+{
+  "error": "Bad Request",
+  "message": "The request was invalid or malformed",
+  "code": "BAD_REQUEST",
+  "status": 400,
+  "details": [
+    {
+      "field": "location_id",
+      "message": "Invalid location ID format"
+    }
+  ],
+  "timestamp": "2023-12-01T10:30:00Z"
+}

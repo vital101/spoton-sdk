@@ -1,0 +1,25 @@
+# Test build configuration for SpotOn SDK
+# Compiles and executes unit tests using utest
+
+# Source paths
+-cp src
+-cp test
+
+# Main entry point for tests
+-main test.TestMain
+
+# Required libraries
+-lib utest
+-lib haxe-concurrent
+
+# Classes will be included automatically through imports
+
+# Define test compilation flag
+-D test
+
+# Target: compile to Neko for test execution
+-neko out/test.n
+
+# Run tests after compilation
+--next
+-cmd neko out/test.n
