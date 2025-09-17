@@ -52,7 +52,32 @@ Error: Unable to locate executable file: haxe
     haxelib version
 ```
 
-### 2. Dependency Installation Failures
+### 2. Haxelib Setup Issues
+
+**Error**: `Can't use ~/.haxelib because it is reserved for config file`
+
+**Symptoms**:
+```
+Error: Can't use /home/runner/.haxelib because it is reserved for config file
+Error: Process completed with exit code 1
+```
+
+**Solutions**:
+```yaml
+# Use correct haxelib repository path (not ~/.haxelib)
+- name: Setup haxelib environment
+  run: haxelib setup ~/haxelib
+
+# Ensure cache path matches
+- name: Cache haxelib dependencies
+  uses: actions/cache@v4
+  with:
+    path: ~/haxelib  # Not ~/.haxelib
+```
+
+**Explanation**: The `~/.haxelib` directory is reserved for haxelib configuration files, not for the library repository. Use `~/haxelib` or another path instead.
+
+### 3. Dependency Installation Failures
 
 **Error**: `haxelib install failed` or missing dependencies
 
@@ -79,12 +104,13 @@ cat haxelib.json | python -m json.tool
 ```yaml
 - name: Install dependencies with verbose output
   run: |
+    haxelib setup ~/haxelib
     haxelib install haxe-concurrent --always
     haxelib install utest --always
     haxelib list
 ```
 
-### 3. Test Execution Failures
+### 4. Test Execution Failures
 
 **Error**: Tests fail in CI but pass locally
 
@@ -119,7 +145,7 @@ git ls-files test/
   run: git config --global core.autocrlf false
 ```
 
-### 4. Build Compilation Errors
+### 5. Build Compilation Errors
 
 **Error**: Haxe compilation fails
 
@@ -155,7 +181,7 @@ cat build-test.hxml
 -neko test.n
 ```
 
-### 5. Cache-Related Issues
+### 6. Cache-Related Issues
 
 **Error**: Slow builds or corrupted dependencies
 
@@ -174,15 +200,15 @@ cat build-test.hxml
 **Update cache configuration**:
 ```yaml
 - name: Cache dependencies
-  uses: actions/cache@v3
+  uses: actions/cache@v4
   with:
-    path: ~/.haxelib
+    path: ~/haxelib  # Correct path, not ~/.haxelib
     key: haxelib-${{ runner.os }}-${{ hashFiles('haxelib.json') }}
     restore-keys: |
       haxelib-${{ runner.os }}-
 ```
 
-### 6. Branch Protection Issues
+### 7. Branch Protection Issues
 
 **Error**: Cannot merge PR despite passing tests
 
@@ -207,7 +233,7 @@ gh api repos/:owner/:repo/branches/main/protection \
   --field required_status_checks='{"strict":true,"contexts":["CI / test (4.2.5)","CI / test (4.3.4)"]}'
 ```
 
-### 7. Workflow Permission Issues
+### 8. Workflow Permission Issues
 
 **Error**: Workflow cannot update status or create comments
 

@@ -14,7 +14,7 @@ concurrency:
 
 # Global environment variables for performance optimization
 env:
-  HAXELIB_ROOT: ~/.haxelib
+  HAXELIB_ROOT: ~/haxelib
   FORCE_COLOR: 1
   CI: true
 
@@ -77,7 +77,7 @@ jobs:
         id: cache-deps
         uses: actions/cache@v4
         with:
-          path: ~/.haxelib
+          path: ~/haxelib
           key: haxelib-${{ matrix.haxe-version }}-${{ hashFiles('haxelib.json') }}-v2
           restore-keys: |
             haxelib-${{ matrix.haxe-version }}-${{ hashFiles('haxelib.json') }}-
@@ -95,7 +95,7 @@ jobs:
           fi
       
       - name: Setup haxelib environment
-        run: haxelib setup ~/.haxelib
+        run: haxelib setup ~/haxelib
       
       - name: Install project dependencies (optimized)
         run: |
