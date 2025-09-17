@@ -1,0 +1,442 @@
+# SpotOn Haxe SDK
+
+A cross-platform SDK for SpotOn's Central API, written in Haxe and compiled to PHP, Python, and Node.js. This SDK provides a unified interface to interact with SpotOn's restaurant management and point-of-sale services across multiple programming environments.
+
+## Features
+
+- **Cross-Platform**: Single codebase compiles to PHP, Python, and Node.js
+- **Type-Safe**: Strongly-typed models and interfaces
+- **Comprehensive API Coverage**: Support for all SpotOn Central API endpoints
+- **Automatic Authentication**: Built-in token management and refresh
+- **Error Handling**: Consistent error handling across all platforms
+- **Easy Integration**: Simple installation and setup for each target platform
+
+## Supported Platforms
+
+- **PHP** 7.4+ with Composer support
+- **Python** 3.6+ with pip support
+- **Node.js** 14+ with npm support
+
+## API Coverage
+
+The SDK provides access to all major SpotOn API endpoints:
+
+- **Business**: Location information and liveness checks
+- **Orders**: Order submission, proposal, and cancellation
+- **Menus**: Menu items, categories, modifiers, and pricing
+- **Loyalty**: Customer management, points, and rewards
+- **Reporting**: Historical order data and analytics
+- **Labor**: Employee management and time tracking (SpotOn Express only)
+- **Onboarding**: OAuth2 location authorization
+- **Webhooks**: Event handling and signature validation
+
+## Installation
+
+### Prerequisites
+
+1. **Haxe 4.2+** - Install from [haxe.org](https://haxe.org/download/)
+2. **haxelib** - Comes with Haxe installation
+
+### Building from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/spoton/spoton-haxe-sdk.git
+cd spoton-haxe-sdk
+
+# Install Haxe dependencies
+haxelib install haxe-concurrent
+
+# Build for all platforms
+haxe build-php.hxml      # Builds PHP version to out/php/
+haxe build-python.hxml   # Builds Python version to out/python/
+haxe build-nodejs.hxml   # Builds Node.js version to out/nodejs/
+```
+
+### Platform-Specific Installation
+
+#### PHP
+
+```bash
+# After building, include in your PHP project
+require_once 'path/to/spoton-haxe-sdk/out/php/index.php';
+
+# Or via Composer (when published)
+composer require spoton/spoton-sdk
+```
+
+#### Python
+
+```bash
+# After building, install locally
+cd out/python
+pip install .
+
+# Or via pip (when published)
+pip install spoton-sdk
+```
+
+#### Node.js
+
+```bash
+# After building, install locally
+npm install ./out/nodejs/
+
+# Or via npm (when published)
+npm install spoton-sdk
+```
+
+## Quick Start
+
+### Authentication
+
+SpotOn SDK supports two authentication methods:
+
+1. **API Key Authentication** (recommended for server-to-server)
+2. **OAuth 2.0 Client Credentials** (for applications)
+
+### PHP Usage
+
+```php
+<?php
+require_once 'vendor/autoload.php'; // or direct include
+
+use spoton\SpotOnClient;
+
+try {
+    // Initialize with API key
+    $credentials = (object) [
+        'apiKey' => 'your-api-key-here'
+    ];
+
+    $client = new SpotOnClient($credentials);
+
+    // Authenticate
+    if ($client->authenticate()) {
+        echo "Authentication successful!\n";
+
+        // Get location information
+        $locationId = 'BL-1234-5678-9012';
+        $client->business->getLocation($locationId, function($location) {
+            echo "Location: " . $location->name . "\n";
+            echo "Address: " . $location->address->city . ", " . $location->address->state . "\n";
+        });
+    }
+
+} catch (Exception $e) {
+    echo "Error: " . $e->getMessage() . "\n";
+}
+?>
+```
+
+### Python Usage
+
+```python
+from spoton import SpotOnClient
+from spoton.errors import SpotOnException
+
+try:
+    # Initialize with API key
+    credentials = {
+        'apiKey': 'your-api-key-here'
+    }
+
+    client = SpotOnClient(credentials)
+
+    # Authenticate
+    if client.authenticate():
+        print("Authentication successful!")
+
+        # Get location information
+        location_id = 'BL-1234-5678-9012'
+
+        def handle_location(location):
+            print(f"Location: {location['name']}")
+            print(f"Address: {location['address']['city']}, {location['address']['state']}")
+
+        client.business.getLocation(location_id, handle_location)
+
+except SpotOnException as e:
+    print(f"SpotOn API Error: {e}")
+except Exception as e:
+    print(f"Error: {e}")
+```
+
+### Node.js Usage
+
+```javascript
+const { SpotOnClient } = require('spoton-sdk');
+
+async function main() {
+    try {
+        // Initialize with API key
+        const credentials = {
+            apiKey: 'your-api-key-here'
+        };
+
+        const client = new SpotOnClient(credentials);
+
+        // Authenticate
+        const isAuthenticated = await client.authenticate();
+        if (isAuthenticated) {
+            console.log('Authentication successful!');
+
+            // Get location information
+            const locationId = 'BL-1234-5678-9012';
+
+            const location = await new Promise((resolve, reject) => {
+                client.business.getLocation(locationId, (response) => {
+                    if (response) resolve(response);
+                    else reject(new Error('Failed to get location'));
+                });
+            });
+
+            console.log(`Location: ${location.name}`);
+            console.log(`Address: ${location.address.city}, ${location.address.state}`);
+        }
+
+    } catch (error) {
+        console.error('Error:', error.message);
+    }
+}
+
+main();
+```
+
+## API Examples
+
+### Working with Orders
+
+```javascript
+// Submit a new order
+const orderData = {
+    external_reference_id: 'order-123',
+    location_id: 'BL-1234-5678-9012',
+    line_items: [
+        {
+            item_id: 'item-456',
+            name: 'Cheeseburger',
+            quantity: 2,
+            price: 1299 // in cents
+        }
+    ],
+    customer: {
+        first_name: 'John',
+        last_name: 'Doe',
+        email: 'john@example.com',
+        phone: '+12345678901'
+    },
+    fulfillment: {
+        type: 'FULFILLMENT_TYPE_PICKUP',
+        schedule_type: 'ASAP'
+    }
+};
+
+client.orders.submitOrder('BL-1234-5678-9012', orderData, (response) => {
+    console.log('Order submitted:', response.id);
+});
+```
+
+### Working with Menus
+
+```python
+# Get all menus for a location
+def handle_menus(menus):
+    for menu in menus:
+        print(f"Menu: {menu['name']} (Active: {menu['active']})")
+
+client.menus.getMenus(location_id, handle_menus)
+
+# Get menu items
+def handle_menu_items(items):
+    for item in items:
+        print(f"Item: {item['name']} - ${item['price']/100:.2f}")
+
+client.menus.getMenuItems(location_id, menu_id, handle_menu_items)
+```
+
+### Working with Customers
+
+```php
+// Upsert a customer in the loyalty program
+$customerData = (object) [
+    'email' => 'customer@example.com',
+    'phone' => '+12345678901',
+    'full_name' => 'Jane Smith'
+];
+
+$client->loyalty->upsertCustomer($locationId, $customerData, function($customer) {
+    echo "Customer ID: " . $customer->id . "\n";
+    echo "Points Available: " . $customer->points_available . "\n";
+});
+```
+
+## Error Handling
+
+The SDK provides consistent error handling across all platforms:
+
+### Error Types
+
+- **`SpotOnException`**: Base exception for all SDK errors
+- **`AuthenticationException`**: Authentication and authorization failures
+- **`NetworkException`**: Network connectivity issues
+- **`APIException`**: API-specific errors (4xx, 5xx responses)
+
+### Example Error Handling
+
+```javascript
+try {
+    await client.authenticate();
+} catch (error) {
+    if (error.name === 'AuthenticationException') {
+        console.error('Invalid credentials:', error.message);
+    } else if (error.name === 'NetworkException') {
+        console.error('Network error:', error.message);
+    } else if (error.name === 'APIException') {
+        console.error('API error:', error.message, 'Status:', error.httpStatus);
+    }
+}
+```
+
+## Configuration
+
+### Client Configuration Options
+
+```javascript
+const config = {
+    baseUrl: 'https://api.spoton.com',  // API base URL
+    timeout: 30000,                     // Request timeout in ms
+    retryAttempts: 3,                   // Number of retry attempts
+    debugMode: false,                   // Enable debug logging
+    customHeaders: {                    // Additional headers
+        'User-Agent': 'MyApp/1.0'
+    }
+};
+
+const client = new SpotOnClient(credentials, config);
+```
+
+### Environment Variables
+
+You can also configure the SDK using environment variables:
+
+```bash
+export SPOTON_API_KEY="your-api-key-here"
+export SPOTON_BASE_URL="https://sandbox-api.spoton.com"  # For testing
+export SPOTON_DEBUG="true"  # Enable debug mode
+```
+
+## Testing
+
+### Running Tests
+
+```bash
+# Run all platform tests
+npm test
+
+# Test specific platform
+npm run test:php
+npm run test:python
+npm run test:nodejs
+```
+
+### Sandbox Environment
+
+For testing, use SpotOn's sandbox environment:
+
+```javascript
+const client = new SpotOnClient(credentials, {
+    baseUrl: 'https://sandbox-api.spoton.com'
+});
+```
+
+## API Documentation
+
+For detailed API documentation, visit:
+
+- **SpotOn Central API Documentation**: [https://docs.spoton.com/central-api](https://docs.spoton.com/central-api)
+- **Authentication Guide**: [https://docs.spoton.com/central-api/authentication](https://docs.spoton.com/central-api/authentication)
+- **Webhook Documentation**: [https://docs.spoton.com/central-api/webhooks](https://docs.spoton.com/central-api/webhooks)
+
+## Examples
+
+Complete working examples are available in the repository:
+
+- **PHP Example**: [`example.php`](example.php)
+- **Python Example**: [`example.py`](example.py)
+- **Node.js Example**: [`example.js`](example.js)
+
+## Requirements
+
+### Platform Requirements
+
+#### PHP
+- PHP 7.4 or higher
+- cURL extension
+- JSON extension
+- OpenSSL extension (for HTTPS)
+
+#### Python
+- Python 3.6 or higher
+- `requests` library (automatically installed)
+- `json` library (built-in)
+
+#### Node.js
+- Node.js 14 or higher
+- Built-in `https` and `querystring` modules
+
+### SpotOn API Requirements
+
+- Valid SpotOn API credentials (API key or OAuth client credentials)
+- Authorized location access
+- Network connectivity to SpotOn's API endpoints
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes in the Haxe source files (`src/spoton/`)
+4. Test across all platforms
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+### Development Setup
+
+```bash
+# Install development dependencies
+haxelib install haxe-concurrent
+
+# Build all targets
+make build
+
+# Run tests
+make test
+
+# Generate documentation
+make docs
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+- **Documentation**: [https://docs.spoton.com](https://docs.spoton.com)
+- **API Support**: [api-support@spoton.com](mailto:api-support@spoton.com)
+- **Issues**: [GitHub Issues](https://github.com/spoton/spoton-haxe-sdk/issues)
+
+## Changelog
+
+### v0.1.0 (Initial Release)
+- Cross-platform SDK for PHP, Python, and Node.js
+- Complete SpotOn Central API coverage
+- Authentication and token management
+- Comprehensive error handling
+- Type-safe models and interfaces
+- Working examples for all platforms
+
+---
+
+**SpotOn Haxe SDK** - Bringing SpotOn's powerful API to your favorite programming language.

@@ -1,0 +1,7 @@
+# Haxe build configuration for Node.js target
+-cp src
+-js out/nodejs/spoton-sdk.js
+-lib haxe-concurrent
+--macro include('spoton')
+-D js-es=6
+-D js-global=exports

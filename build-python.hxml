@@ -1,0 +1,5 @@
+# Haxe build configuration for Python target
+-cp src
+-python out/python/spoton_sdk.py
+-lib haxe-concurrent
+--macro include('spoton')

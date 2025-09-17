@@ -1,0 +1,5 @@
+# Haxe build configuration for PHP target
+-cp src
+-php out/php
+-lib haxe-concurrent
+--macro include('spoton')

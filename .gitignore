@@ -1,0 +1,41 @@
+# Build outputs
+out/
+*.js.map
+*.n
+*.swf
+*.swc
+
+# Target-specific outputs
+*.js
+*.php
+*.py
+!example.js
+!example.php
+!example.py
+
+# Haxe cache
+.haxelib/
+dump/
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-*
+
+# OS files
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependencies
+node_modules/
+vendor/
+__pycache__/
+*.pyc
