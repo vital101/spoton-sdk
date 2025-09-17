@@ -254,6 +254,7 @@ gh api repos/:owner/:repo/branches/main/protection \
 ```
 Error: Resource not accessible by integration
 Error: 403 Forbidden
+RequestError [HttpError]: Resource not accessible by integration
 ```
 
 **Solutions**:
@@ -270,13 +271,16 @@ on: [push, pull_request]
 
 permissions:
   contents: read
-  checks: write
+  statuses: write    # Required for commit status updates
+  checks: write      # Required for check runs
   pull-requests: write
 
 jobs:
   test:
     # ... rest of workflow
 ```
+
+**Note**: The `statuses: write` permission is specifically required for updating commit statuses via the GitHub API.
 
 ## Advanced Troubleshooting
 

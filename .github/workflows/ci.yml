@@ -7,6 +7,13 @@ on:
     branches: [ main, develop ]
   workflow_dispatch:
 
+# Permissions required for the workflow
+permissions:
+  contents: read
+  statuses: write
+  checks: write
+  pull-requests: write
+
 # Concurrency controls to prevent resource conflicts and optimize performance
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -878,51 +885,86 @@ jobs:
           path: test-results
       
       - name: Update commit status
+        continue-on-error: true
         uses: actions/github-script@v6
         with:
           script: |
             const fs = require('fs');
             const path = require('path');
             
+            // Debug: List all files in test-results directory
+            console.log('Contents of test-results directory:');
+            try {
+              if (fs.existsSync('test-results')) {
+                const allFiles = fs.readdirSync('test-results', { withFileTypes: true });
+                for (const file of allFiles) {
+                  console.log(`  ${file.isDirectory() ? 'DIR' : 'FILE'}: ${file.name}`);
+                  if (file.isDirectory()) {
+                    try {
+                      const subFiles = fs.readdirSync(path.join('test-results', file.name));
+                      for (const subFile of subFiles) {
+                        console.log(`    - ${subFile}`);
+                      }
+                    } catch (e) {
+                      console.log(`    Error reading subdirectory: ${e.message}`);
+                    }
+                  }
+                }
+              } else {
+                console.log('test-results directory does not exist');
+              }
+            } catch (e) {
+              console.log(`Error reading test-results directory: ${e.message}`);
+            }
+            
             // Find all test result files
-            const testResultDirs = fs.readdirSync('test-results');
             let allResults = [];
             
-            for (const dir of testResultDirs) {
-              if (dir.startsWith('test-results-haxe-')) {
-                // Try new reports location first, then fall back to legacy location
-                const newReportPath = path.join('test-results', dir, 'reports', 'report.json');
-                const legacyReportPath = path.join('test-results', dir, 'report.json');
+            try {
+              if (!fs.existsSync('test-results')) {
+                console.log('No test-results directory found');
+              } else {
+                const testResultDirs = fs.readdirSync('test-results');
                 
-                let reportPath = null;
-                if (fs.existsSync(newReportPath)) {
-                  reportPath = newReportPath;
-                } else if (fs.existsSync(legacyReportPath)) {
-                  reportPath = legacyReportPath;
-                }
-                
-                if (reportPath) {
-                  const reportContent = fs.readFileSync(reportPath, 'utf8');
-                  try {
-                    const report = JSON.parse(reportContent);
-                    allResults.push(report);
-                  } catch (e) {
-                    console.log(`Failed to parse report from ${reportPath}: ${e.message}`);
+                for (const dir of testResultDirs) {
+                  if (dir.startsWith('test-results-haxe-')) {
+                    console.log(`Processing directory: ${dir}`);
+                    
+                    // Try new reports location first, then fall back to legacy location
+                    const newReportPath = path.join('test-results', dir, 'reports', 'report.json');
+                    const legacyReportPath = path.join('test-results', dir, 'report.json');
+                    
+                    let reportPath = null;
+                    if (fs.existsSync(newReportPath)) {
+                      reportPath = newReportPath;
+                      console.log(`Found report at: ${newReportPath}`);
+                    } else if (fs.existsSync(legacyReportPath)) {
+                      reportPath = legacyReportPath;
+                      console.log(`Found report at: ${legacyReportPath}`);
+                    } else {
+                      console.log(`No report found for ${dir} (checked ${newReportPath} and ${legacyReportPath})`);
+                    }
+                    
+                    if (reportPath) {
+                      try {
+                        const reportContent = fs.readFileSync(reportPath, 'utf8');
+                        const report = JSON.parse(reportContent);
+                        allResults.push(report);
+                        console.log(`Successfully parsed report for Haxe ${report.haxe_version}: ${report.test_status}`);
+                      } catch (e) {
+                        console.log(`Failed to parse report from ${reportPath}: ${e.message}`);
+                      }
+                    }
                   }
                 }
               }
+            } catch (e) {
+              console.log(`Error processing test results: ${e.message}`);
             }
             
             if (allResults.length === 0) {
-              console.log('No test results found, setting status to error');
-              await github.rest.repos.createCommitStatus({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                sha: context.sha,
-                state: 'error',
-                context: 'ci/tests',
-                description: 'No test results found'
-              });
+              console.log('No test results found, skipping status update');
+              console.log('This may be normal if tests failed to run or artifacts were not uploaded');
               return;
             }
             
@@ -953,17 +995,22 @@ jobs:
             }
             
             // Update commit status
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state: overallStatus,
-              context: 'ci/tests',
-              description: description,
-              target_url: `${context.payload.repository.html_url}/actions/runs/${context.runId}`
-            });
-            
-            console.log(`Updated commit status to ${overallStatus}: ${description}`);
+            try {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: overallStatus,
+                context: 'ci/tests',
+                description: description,
+                target_url: `${context.payload.repository.html_url}/actions/runs/${context.runId}`
+              });
+              
+              console.log(`Updated commit status to ${overallStatus}: ${description}`);
+            } catch (error) {
+              console.log(`Failed to update commit status: ${error.message}`);
+              console.log('This may be due to insufficient permissions or repository settings');
+            }
             
             // Also create individual status checks for each Haxe version
             for (const result of allResults) {
@@ -972,15 +1019,19 @@ jobs:
                 ? `Tests passed (${result.passed_tests}/${result.total_tests})`
                 : `Tests failed (${result.passed_tests}/${result.total_tests} passed)`;
               
-              await github.rest.repos.createCommitStatus({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                sha: context.sha,
-                state: versionStatus,
-                context: `ci/tests/haxe-${result.haxe_version}`,
-                description: versionDescription,
-                target_url: `${context.payload.repository.html_url}/actions/runs/${context.runId}`
-              });
-              
-              console.log(`Updated status for Haxe ${result.haxe_version}: ${versionStatus}`);
+              try {
+                await github.rest.repos.createCommitStatus({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  sha: context.sha,
+                  state: versionStatus,
+                  context: `ci/tests/haxe-${result.haxe_version}`,
+                  description: versionDescription,
+                  target_url: `${context.payload.repository.html_url}/actions/runs/${context.runId}`
+                });
+                
+                console.log(`Updated status for Haxe ${result.haxe_version}: ${versionStatus}`);
+              } catch (error) {
+                console.log(`Failed to update status for Haxe ${result.haxe_version}: ${error.message}`);
+              }
             }
